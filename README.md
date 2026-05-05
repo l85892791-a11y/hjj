@@ -140,6 +140,7 @@ Shannon Pro supports a self-hosted runner model (similar to GitHub Actions self-
 - **AI Provider Credentials** (choose one):
   - **Anthropic API key** (recommended) - Get from [Anthropic Console](https://console.anthropic.com)
   - **Claude Code OAuth token**
+  - **Cursor** - Use your existing Cursor subscription (see [Cursor](#cursor))
   - **AWS Bedrock** - Route through Amazon Bedrock with AWS credentials (see [AWS Bedrock](#aws-bedrock))
   - **Google Vertex AI** - Route through Google Cloud Vertex AI (see [Google Vertex AI](#google-vertex-ai))
 
@@ -541,6 +542,50 @@ ANTHROPIC_LARGE_MODEL=claude-opus-4-7
 </details>
 
 Set `CLOUD_ML_REGION=global` for global endpoints, or a specific region like `us-east5`. Some models may not be available on global endpoints — see the [Vertex AI Model Garden](https://console.cloud.google.com/vertex-ai/model-garden) for region availability.
+
+### Cursor
+
+Shannon supports using [Cursor](https://cursor.com) as a provider to access Claude models via the Cursor API. This enables users who already have a Cursor subscription to run Shannon without a separate Anthropic API key.
+
+#### Quick Setup
+
+Run `npx @keygraph/shannon setup` and select **Cursor**. The wizard will prompt for your API key and optionally a custom endpoint.
+
+Or export env vars directly:
+
+```bash
+export SHANNON_USE_CURSOR=1
+export CURSOR_API_KEY=your-cursor-api-key
+```
+
+<details>
+<summary>Clone and Build: add to .env instead</summary>
+
+```bash
+SHANNON_USE_CURSOR=1
+CURSOR_API_KEY=your-cursor-api-key
+```
+
+</details>
+
+You can find your Cursor API key in **Cursor Settings > General > API Keys**.
+
+Optionally override the default endpoint (`https://api.cursor.com/v1`):
+
+```bash
+export CURSOR_BASE_URL=https://custom-cursor-endpoint.example.com/v1
+```
+
+Shannon uses the same three model tiers (small, medium, large) when routing through Cursor. Override with `ANTHROPIC_SMALL_MODEL`, `ANTHROPIC_MEDIUM_MODEL`, and `ANTHROPIC_LARGE_MODEL` if needed.
+
+#### Cursor IDE Integration
+
+Shannon also ships with first-class Cursor IDE support:
+
+- **`.cursorrules`** — Project context file that gives Cursor's AI assistant full knowledge of Shannon's architecture, coding conventions, and project structure.
+- **`.cursor/rules/`** — Rule files for common workflows (debugging, code review, PR creation) that can be invoked from within Cursor.
+
+These files are the Cursor equivalents of `CLAUDE.md` and `.claude/commands/`, ensuring a consistent AI-assisted development experience regardless of which tool you prefer.
 
 ### Custom Base URL
 

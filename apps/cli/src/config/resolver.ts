@@ -46,6 +46,11 @@ const CONFIG_MAP: readonly ConfigMapping[] = [
   { env: 'ANTHROPIC_BASE_URL', toml: 'custom_base_url.base_url', type: 'string' },
   { env: 'ANTHROPIC_AUTH_TOKEN', toml: 'custom_base_url.auth_token', type: 'string' },
 
+  // Cursor
+  { env: 'SHANNON_USE_CURSOR', toml: 'cursor.use', type: 'boolean' },
+  { env: 'CURSOR_API_KEY', toml: 'cursor.api_key', type: 'string' },
+  { env: 'CURSOR_BASE_URL', toml: 'cursor.base_url', type: 'string' },
+
   // Model tiers
   { env: 'ANTHROPIC_SMALL_MODEL', toml: 'models.small', type: 'string' },
   { env: 'ANTHROPIC_MEDIUM_MODEL', toml: 'models.medium', type: 'string' },
@@ -164,6 +169,15 @@ function validateProviderFields(config: TOMLConfig, provider: string, errors: st
       validateModelTiers(config, 'vertex', errors);
       break;
     }
+
+    case 'cursor': {
+      const required = ['use', 'api_key'];
+      const missing = required.filter((k) => !keys.includes(k));
+      if (missing.length > 0) {
+        errors.push(`[cursor] missing required keys: ${missing.join(', ')}`);
+      }
+      break;
+    }
   }
 }
 
@@ -227,7 +241,7 @@ function validateConfig(config: TOMLConfig): string[] {
   }
 
   // 4. Only one provider section allowed (ignore empty sections)
-  const PROVIDER_SECTIONS = ['anthropic', 'custom_base_url', 'bedrock', 'vertex'] as const;
+  const PROVIDER_SECTIONS = ['anthropic', 'custom_base_url', 'bedrock', 'vertex', 'cursor'] as const;
   const present = PROVIDER_SECTIONS.filter((s) => {
     const section = config[s];
     return section && typeof section === 'object' && Object.keys(section).length > 0;

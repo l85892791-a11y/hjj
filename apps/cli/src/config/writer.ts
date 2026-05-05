@@ -13,6 +13,7 @@ export interface ShannonConfig {
   custom_base_url?: { base_url?: string; auth_token?: string };
   bedrock?: { use?: boolean; region?: string; token?: string };
   vertex?: { use?: boolean; region?: string; project_id?: string; key_path?: string };
+  cursor?: { use?: boolean; api_key?: string; base_url?: string };
   models?: { small?: string; medium?: string; large?: string };
 }
 

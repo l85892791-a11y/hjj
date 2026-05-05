@@ -179,6 +179,14 @@ export async function runClaudePrompt(
         if (providerConfig.gcpProjectId) sdkEnv.ANTHROPIC_VERTEX_PROJECT_ID = providerConfig.gcpProjectId;
         if (providerConfig.gcpCredentialsPath) sdkEnv.GOOGLE_APPLICATION_CREDENTIALS = providerConfig.gcpCredentialsPath;
         break;
+      case 'cursor':
+        if (providerConfig.cursorApiKey) sdkEnv.ANTHROPIC_API_KEY = providerConfig.cursorApiKey;
+        if (providerConfig.cursorBaseUrl) {
+          sdkEnv.ANTHROPIC_BASE_URL = providerConfig.cursorBaseUrl;
+        } else {
+          sdkEnv.ANTHROPIC_BASE_URL = 'https://api.cursor.com/v1';
+        }
+        break;
       case 'litellm_router':
         if (providerConfig.baseUrl) sdkEnv.ANTHROPIC_BASE_URL = providerConfig.baseUrl;
         if (providerConfig.authToken) sdkEnv.ANTHROPIC_AUTH_TOKEN = providerConfig.authToken;
@@ -203,6 +211,9 @@ export async function runClaudePrompt(
     ...(!sdkEnv.CLOUD_ML_REGION ? ['CLOUD_ML_REGION'] : []),
     ...(!sdkEnv.ANTHROPIC_VERTEX_PROJECT_ID ? ['ANTHROPIC_VERTEX_PROJECT_ID'] : []),
     ...(!sdkEnv.GOOGLE_APPLICATION_CREDENTIALS ? ['GOOGLE_APPLICATION_CREDENTIALS'] : []),
+    'SHANNON_USE_CURSOR',
+    'CURSOR_API_KEY',
+    'CURSOR_BASE_URL',
     'HOME',
     'PATH',
     'PLAYWRIGHT_MCP_EXECUTABLE_PATH',
@@ -211,6 +222,14 @@ export async function runClaudePrompt(
     const val = process.env[name];
     if (val) {
       sdkEnv[name] = val;
+    }
+  }
+
+  // 3c. Cursor env-var mode: map CURSOR_* to SDK-expected ANTHROPIC_* vars
+  if (!providerConfig && sdkEnv.SHANNON_USE_CURSOR === '1' && sdkEnv.CURSOR_API_KEY) {
+    sdkEnv.ANTHROPIC_API_KEY = sdkEnv.CURSOR_API_KEY;
+    if (!sdkEnv.ANTHROPIC_BASE_URL) {
+      sdkEnv.ANTHROPIC_BASE_URL = sdkEnv.CURSOR_BASE_URL || 'https://api.cursor.com/v1';
     }
   }
 

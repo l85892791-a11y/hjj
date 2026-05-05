@@ -1,0 +1,37 @@
+---
+description: Create a PR to main branch using conventional commit style for the title
+globs:
+alwaysApply: false
+---
+
+Create a pull request from the current branch to the `main` branch.
+
+## Steps
+
+1. Run `git log --oneline -10` to see recent commit history
+2. Run `git log main..HEAD --oneline` to see all commits on this branch
+3. Run `git diff main...HEAD --stat` to see file changes summary
+4. Run `git branch --show-current` to get branch name for issue detection
+
+## PR Title
+- Follows conventional commit format (e.g., `fix:`, `feat:`, `chore:`, `refactor:`)
+- Concise and accurately describes the changes
+
+## PR Body Format
+
+```
+## Summary
+
+- **Bold action phrase** — 1-2 sentence conceptual description
+```
+
+Each Summary bullet:
+- Bold imperative verb lead: "Add X", "Replace Y", "Fix Z"
+- Followed by em dash and conceptual description
+- No inline code references (no backticks for function/file names)
+- 2-5 bullets, scaling with PR size
+
+## Important
+- Do NOT include any AI attribution in the PR
+- Use the conventional commit prefix that best matches the changes
+- `Closes #X` syntax will automatically close referenced issues when merged

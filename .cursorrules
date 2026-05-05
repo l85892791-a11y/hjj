@@ -1,0 +1,112 @@
+# Shannon — AI Pentester by Keygraph
+
+AI-powered penetration testing agent for defensive security analysis. Automates vulnerability assessment by combining reconnaissance tools with AI-powered code analysis.
+
+## Commands
+
+**Prerequisites:** Docker, AI provider credentials (`.env` for local, `shn setup` or env vars for npx)
+
+### Dual CLI
+
+Shannon supports two CLI modes, auto-detected based on the current working directory:
+
+| | **npx** (`npx @keygraph/shannon`) | **Local** (`./shannon`) |
+|---|---|---|
+| **Install** | Zero-install via npm | Clone the repo |
+| **Image** | Pulled from Docker Hub (`keygraph/shannon:latest`) | Built locally (`shannon-worker`) |
+| **State** | `~/.shannon/` | Project directory |
+| **Credentials** | `~/.shannon/config.toml` (via `shn setup`) or env vars | `./.env` |
+| **Config** | `~/.shannon/config.toml` (via `shn setup`) | N/A |
+| **Prompts** | Bundled in Docker image | Mounted from `./apps/worker/prompts/` (live-editable) |
+
+Mode auto-detection: local mode activates when env var `SHANNON_LOCAL=1` is set by the `./shannon` entry point (`apps/cli/src/mode.ts`). Otherwise npx mode.
+
+### Build & Run
+
+```bash
+# Build TypeScript (development)
+pnpm run build                       # Build all packages via Turborepo
+pnpm run check                       # Type-check all packages
+pnpm biome                           # Biome lint + format + import sorting check
+pnpm biome:fix                       # Auto-fix lint, format, and import sorting
+```
+
+**Monorepo tooling:** pnpm workspaces, Turborepo for task orchestration, Biome for linting/formatting. TypeScript compiler options shared via `tsconfig.base.json` at the root. All packages extend it, overriding only `rootDir` and `outDir`. Shared devDependencies (`typescript`, `@types/node`, `turbo`, `@biomejs/biome`) are hoisted to the root workspace.
+
+## Architecture
+
+### Monorepo Layout
+
+```
+apps/cli/        — @keygraph/shannon (published to npm, bundled with tsdown)
+apps/worker/     — @shannon/worker (private, Temporal worker + pipeline logic)
+```
+
+### CLI Package (`apps/cli/`)
+Published as `@keygraph/shannon` on npm. Contains only Docker orchestration logic — no Temporal SDK, business logic, or prompts. Bundled with tsdown for single-file ESM output.
+
+- `apps/cli/src/index.ts` — CLI dispatcher
+- `apps/cli/src/mode.ts` — Auto-detection: local mode if `SHANNON_LOCAL=1` env var is set
+- `apps/cli/src/docker.ts` — Compose lifecycle, image pull/build, ephemeral `docker run` worker spawning
+- `apps/cli/src/env.ts` — `.env` loading, TOML fallback, credential validation, env flag building
+- `apps/cli/src/config/resolver.ts` — Cascading config (npx only): env vars -> `~/.shannon/config.toml`
+- `apps/cli/src/config/writer.ts` — TOML serialization and secure file persistence (0o600)
+- `apps/cli/src/commands/setup.ts` — Interactive TUI wizard for provider credential setup (npx only)
+
+### Worker Package (`apps/worker/`)
+- `apps/worker/src/ai/claude-executor.ts` — Claude Agent SDK integration with retry logic
+- `apps/worker/src/ai/models.ts` — Model tier definitions and resolution
+- `apps/worker/src/services/agent-execution.ts` — Agent lifecycle management
+- `apps/worker/src/services/container.ts` — DI container for per-workflow services
+- `apps/worker/src/types/config.ts` — Configuration types including ProviderConfig
+
+### Five-Phase Pipeline
+
+1. **Pre-Recon** (`pre-recon`) — Source code analysis
+2. **Recon** (`recon`) — Attack surface mapping
+3. **Vulnerability Analysis** (5 parallel agents) — injection, xss, auth, authz, ssrf
+4. **Exploitation** (5 parallel agents, conditional) — Exploits confirmed vulnerabilities
+5. **Reporting** (`report`) — Executive-level security report
+
+## Code Style Guidelines
+
+### Formatting
+Biome handles formatting and linting. Run `pnpm biome:fix` to auto-fix. Config in `biome.json`: single quotes, semicolons, trailing commas, 2-space indent, 120 char line width.
+
+### Clarity Over Brevity
+- Optimize for readability, not line count
+- Use descriptive names that convey intent
+- Prefer explicit logic over clever one-liners
+
+### TypeScript Conventions
+- Use `function` keyword for top-level functions (not arrow functions)
+- Explicit return type annotations on exported/top-level functions
+- Prefer `readonly` for data that shouldn't be mutated
+- `exactOptionalPropertyTypes` is enabled — use spread for optional props, not direct `undefined` assignment
+
+### Comments
+Comments must be **timeless** — no references to conversations, refactoring history, or AI tools.
+
+- `/** JSDoc */` — file headers and exported functions/interfaces
+- `// N. Description` — numbered sequential steps inside function bodies
+- `// === Section ===` — high-level dividers between groups of functions
+- `// NOTE:` / `// WARNING:` / `// IMPORTANT:` — gotchas and constraints
+
+**Never:** obvious comments, conversation references, history markers
+
+### Avoid
+- Combining multiple concerns into a single function
+- Dense callback chains when sequential logic is clearer
+- Sacrificing readability for DRY
+- Abstractions for one-time operations
+- Backwards-compatibility shims or deprecated wrappers
+
+## Key Files
+
+**CLI:** `shannon` (entry point), `apps/cli/src/index.ts` (dispatcher), `apps/cli/src/docker.ts` (orchestration)
+
+**Entry Points:** `apps/worker/src/temporal/workflows.ts`, `apps/worker/src/temporal/activities.ts`, `apps/worker/src/temporal/worker.ts`
+
+**Core Logic:** `apps/worker/src/session-manager.ts`, `apps/worker/src/ai/claude-executor.ts`, `apps/worker/src/config-parser.ts`, `apps/worker/src/services/`
+
+**Config:** `docker-compose.yml`, `apps/worker/configs/`, `apps/worker/prompts/`, `tsconfig.base.json`, `turbo.json`, `biome.json`

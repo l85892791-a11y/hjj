@@ -4,7 +4,7 @@ AI-powered penetration testing agent for defensive security analysis. Automates 
 
 ## Commands
 
-**Prerequisites:** Docker, AI provider credentials (`.env` for local, `shn setup` or env vars for npx)
+**Prerequisites:** Docker, AI provider credentials (`.env` for local, `shn setup` or env vars for npx). Supported providers: Anthropic API, OAuth, Cursor, AWS Bedrock, Google Vertex AI, Custom Base URL.
 
 ### Dual CLI
 
