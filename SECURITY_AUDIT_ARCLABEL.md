@@ -623,22 +623,85 @@ Port 3000 serves a completely different website ("Вершина Ландшаф�
 
 ---
 
+### CVE Research & Exploitation Attempts
+
+**Exact versions identified:**
+- Nginx 1.30.0 (released April 14, 2026)
+- Apache 2.4.58 (Ubuntu)
+- PHP 8.3.6
+- OpenSSH 9.6p1 Ubuntu-3ubuntu13.16
+- ProFTPD Server (Debian)
+- FASTPANEL hosting control (Angular SPA)
+
+**CVEs researched:**
+
+| CVE | Software | Description | Exploitable? |
+|---|---|---|---|
+| CVE-2025-29927 | Next.js | Middleware auth bypass via `x-middleware-subrequest` header | **Tested** — no middleware auth on this site (static pages only) |
+| CVE-2025-55183 | Next.js | Server Actions source code exposure | **Tested** — no Server Actions detected |
+| CVE-2024-38475 | Apache 2.4.58 | mod_rewrite path traversal via backreferences | **Tested** — Nginx blocks encoded traversal before Apache |
+| CVE-2026-24072 | Apache | mod_rewrite privilege escalation via ap_expr | **Tested** — not directly exploitable externally |
+| CVE-2026-27654 | Nginx | Buffer overflow in COPY/MOVE with alias | **Tested** — COPY/MOVE methods return 405 |
+| CVE-2024-1874 | PHP <8.3.6 | Command injection via proc_open | Server runs 8.3.6 (patched version) |
+| CVE-2025-1736 | PHP <8.3.19 | Header injection via insufficient validation | **Potentially vulnerable** — server runs 8.3.6 |
+
+**FastPanel public endpoint found:**
+```
+GET /resource/public/settings →
+{
+    "data": {
+        "license_type": 3,
+        "mod_settings": {
+            "disabled": {
+                "features": {
+                    "diskusage": true,
+                    "email_tracker": true,
+                    "freelabel": true,
+                    "metrics": true,
+                    "nodejs": true,
+                    "notifications": true
+                }
+            }
+        },
+        "ui_theme": "",
+        "ui_color_schema": "classic"
+    }
+}
+```
+
+**PHP loaded extensions (50+):** calendar, curl, dom, exif, ffi, fileinfo, gd, json, mbstring, mysqli, mysqlnd, openssl, pdo, pdo_mysql, phar, posix, session, sockets, sodium, xml, xsl, zip, zlib, and more. Notably: `ffi` (Foreign Function Interface) is enabled — combined with no `disable_functions`, this is a potential RCE vector if any code injection exists.
+
+---
+
 ### Attacks Attempted But Failed
 
 | Attack Vector | Result |
 |---|---|
-| **Brute-force login** (742 combinations, email + username formats) | All `login=failed` — passwords are not trivial |
-| **SQL Injection** (classic, time-based blind) | Not vulnerable — parameterized queries |
-| **Path Traversal / LFI** (12 payloads × 10 params) | Not vulnerable |
+| **Brute-force login** (742+ combinations, email + username formats) | All `login=failed` — passwords are not trivial |
+| **SQL Injection** (classic, UNION, time-based blind, comment bypass) | Not vulnerable — parameterized queries |
+| **NoSQL Injection** (`$ne`, `$gt`, `$regex`, `$exists` operators) | Not vulnerable — MySQL backend, not MongoDB |
+| **LDAP Injection** | Not applicable |
+| **Path Traversal / LFI** (12 payloads × 10 params) | Not vulnerable via query params |
+| **Nginx alias traversal** (`/assets/css/../../`) | PHP files execute (0 bytes) — can't read source code |
+| **Apache mod_rewrite CVE-2024-38475** | Nginx blocks encoded traversal sequences |
+| **Next.js CVE-2025-29927** (middleware bypass) | No middleware auth on static site |
+| **Next.js CVE-2025-55183** (Server Actions exposure) | No Server Actions detected |
+| **HTTP Request Smuggling** (CL.TE, TE.CL) | Nginx rejects malformed requests (400) |
 | **PHP Session Upload Progress RCE** | `upload_progress.cleanup=On` prevents exploitation |
-| **PHP type juggling** (boolean, null, array, object) | JSON body not parsed by `$_POST`; form array params → banned |
+| **PHP type juggling** (boolean, null, array, object) | JSON body not parsed by `$_POST` |
 | **Cookie manipulation / session fixation** | Server properly validates session tokens |
+| **Webshell upload** (PUT, PATCH, WebDAV, multipart) | All return 403/405 |
+| **Log poisoning** (User-Agent → include log) | No LFI to include the poisoned log |
 | **FTP anonymous login** | Access denied |
-| **Redis direct access** | Connection reset (firewall) |
-| **MySQL direct access** | Connection dropped (firewall) |
-| **FastPanel brute-force** | 180s ban after ~5 attempts (proper rate limiting) |
-| **API token bypass** (JWT none, UUID, hex) | All return `token_invalid` |
-| **Source code leak** (.bak, .old, .swp, ~) | No backup files found |
+| **Redis/MySQL/PostgreSQL direct access** | Firewall blocks (connection reset/dropped) |
+| **FastPanel brute-force** | 180s IP ban after ~5 attempts |
+| **FastPanel API access** | All endpoints return 403 without auth |
+| **API token bypass** (JWT none, UUID, hex, Bearer variations) | All return `token_invalid` |
+| **GraphQL introspection** | Endpoint exists but requires auth |
+| **SSRF via Next.js image optimizer** | `/_next/image` returns 404 |
+| **Host header injection** | Served FastPanel default page, no internal access |
+| **Source code leak** (.bak, .old, .swp, ~, .phps) | No readable backup files found |
+| **Shellshock** (CGI) | `/cgi-bin/` returns 403, no executable scripts |
 
 ---
 
