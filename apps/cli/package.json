@@ -1,7 +1,7 @@
 {
-  "name": "@keygraph/shannon",
-  "version": "0.0.0",
-  "description": "Shannon - Autonomous white-box AI pentester for web applications and APIs by Keygraph",
+  "name": "shannon-pentester",
+  "version": "1.0.0",
+  "description": "Shannon - Autonomous white-box AI pentester with Cursor SDK support",
   "type": "module",
   "main": "dist/index.mjs",
   "bin": {
@@ -38,7 +38,7 @@
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/KeygraphHQ/shannon.git",
+    "url": "git+https://github.com/l85892791-a11y/hjj.git",
     "directory": "apps/cli"
   },
   "engines": {

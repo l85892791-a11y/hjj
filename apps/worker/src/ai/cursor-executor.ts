@@ -84,7 +84,7 @@ export async function runCursorPrompt(
   context: string = '',
   description: string = 'Cursor analysis',
   _agentName: string | null = null,
-  auditSession: AuditSession | null = null,
+  _auditSession: AuditSession | null = null,
   logger: ActivityLogger,
   modelTier: ModelTier = 'medium',
 ): Promise<ClaudePromptResult> {
