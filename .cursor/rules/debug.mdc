@@ -1,0 +1,69 @@
+---
+description: Systematically debug errors using context analysis and structured recovery
+globs:
+alwaysApply: false
+---
+
+You are debugging an issue. Follow this structured approach to avoid spinning in circles.
+
+## Step 1: Capture Error Context
+- Read the full error message and stack trace
+- Identify the layer where the error originated:
+  - **CLI/Args** - Input validation, path resolution
+  - **Config Parsing** - YAML parsing, JSON Schema validation (`src/config-parser.ts`)
+  - **Session Management** - Agent definitions (`src/session-manager.ts`), mutex (`src/utils/concurrency.ts`)
+  - **DI Container** - Container initialization/lookup (`src/services/container.ts`)
+  - **Services** - AgentExecutionService, ConfigLoaderService, ExploitationCheckerService, error-handling (`src/services/`)
+  - **Audit System** - Logging, metrics tracking, atomic writes (`src/audit/`)
+  - **Claude SDK** - Agent execution, MCP servers, turn handling (`src/ai/claude-executor.ts`)
+  - **Git Operations** - Checkpoints, rollback, commit (`src/services/git-manager.ts`)
+  - **Validation** - Deliverable checks, queue validation (`src/services/queue-validation.ts`)
+
+## Step 2: Check Relevant Logs
+
+**Session audit logs:**
+```bash
+ls -lt workspaces/ | head -5
+cat workspaces/<session>/session.json | jq '.errors, .agentMetrics'
+ls -lt workspaces/<session>/agents/
+cat workspaces/<session>/agents/<latest>.log
+```
+
+## Step 3: Trace the Call Path
+
+1. **Worker + Client** -> `src/temporal/worker.ts`
+2. **Workflow** -> `src/temporal/workflows.ts`
+3. **Activities** -> `src/temporal/activities.ts`
+4. **Container** -> `src/services/container.ts`
+5. **Services** -> `src/services/agent-execution.ts`
+6. **Config** -> `src/config-parser.ts` via `src/services/config-loader.ts`
+7. **Prompts** -> `src/services/prompt-manager.ts`
+8. **Audit** -> `src/audit/audit-session.ts`
+9. **Executor** -> `src/ai/claude-executor.ts`
+10. **Validation** -> `src/services/queue-validation.ts`
+
+## Step 4: Identify Root Cause
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| Agent hangs indefinitely | MCP server crashed, Playwright timeout | Check Playwright logs |
+| "Validation failed: Missing deliverable" | Agent didn't create expected file | Check `deliverables/` dir |
+| Git checkpoint fails | Uncommitted changes, git lock | Run `git status`, remove `.git/index.lock` |
+| "Session limit reached" | Claude API billing limit | Not retryable - check API usage |
+| Parallel agents all fail | Shared resource contention | Check mutex usage |
+| Cost/timing not tracked | Metrics not reloaded before update | Add `metricsTracker.reload()` |
+| session.json corrupted | Partial write during crash | Delete and restart |
+| YAML config rejected | Invalid schema or unsafe content | Run through AJV validator manually |
+
+## Step 5: Apply Fix with Retry Limit
+
+- **CRITICAL**: Track consecutive failed attempts
+- After **3 consecutive failures** on the same issue, STOP and summarize what was tried
+- After a successful fix, reset the failure counter
+
+## Step 6: Validate the Fix
+
+```bash
+npx tsc --noEmit
+pnpm biome
+```

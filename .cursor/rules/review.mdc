@@ -1,0 +1,56 @@
+---
+description: Review code changes for Shannon-specific patterns, security, and common mistakes
+globs:
+alwaysApply: false
+---
+
+Review the current changes with focus on Shannon-specific patterns and common mistakes.
+
+## Error Handling (CRITICAL)
+- All errors use PentestError — never raw `Error`
+- Error type is appropriate: 'config', 'network', 'tool', 'prompt', 'filesystem', 'validation', 'billing', 'unknown'
+- Retryable flag matches behavior
+- Context includes debugging info
+- Use ErrorCode enum for classification
+- Result<T,E> for service returns
+
+## Audit System & Concurrency (CRITICAL)
+- Mutex protection for parallel operations
+- Reload before modify — `metricsTracker.reload()` before updating metrics
+- Atomic writes for session.json — use `atomicWrite()`, never `fs.writeFile()` directly
+- Stream drain handling
+- Semaphore release in finally blocks
+
+## Claude SDK Integration (CRITICAL)
+- Prompt variable interpolation — check all `{{VARIABLE}}` placeholders
+- Turn counting — increment on assistant messages, not tool calls
+- Cost tracking — extract from final result message
+- API error detection — "session limit reached" (fatal) vs other errors
+
+## Services Layer & DI Container (CRITICAL)
+- Business logic in services, not activities
+- Services accept ActivityLogger — no `@temporalio/*` imports in services
+- Result type for fallible operations
+- AuditSession not in container — passed per-agent call
+
+## TypeScript Safety
+- No double casting (`as unknown as SomeType`)
+- Validate before casting
+- Explicit null checks on critical paths
+- Use `??` not `||` for null/undefined defaults
+- `import type { ... }` for type-only imports
+
+## Security Review
+- No credentials in logs
+- Config file size limit (1MB max)
+- YAML safe parsing — FAILSAFE_SCHEMA only
+- No eval/Function
+- Input validation at boundaries
+
+## Anti-Patterns to Avoid
+- Catch + re-throw without context
+- Silent failures in session loading
+- Duplicate retry logic
+- Hardcoded error message matching
+- Console.log in services — use ActivityLogger
+- Temporal imports in services
