@@ -22,9 +22,7 @@ const FORWARD_VARS = [
   'CLOUD_ML_REGION',
   'ANTHROPIC_VERTEX_PROJECT_ID',
   'GOOGLE_APPLICATION_CREDENTIALS',
-  'SHANNON_USE_CURSOR',
   'CURSOR_API_KEY',
-  'CURSOR_BASE_URL',
   'ANTHROPIC_SMALL_MODEL',
   'ANTHROPIC_MEDIUM_MODEL',
   'ANTHROPIC_LARGE_MODEL',
@@ -81,7 +79,7 @@ function detectProviders(): string[] {
   if (isCustomBaseUrlConfigured()) providers.push('Custom Base URL');
   if (process.env.CLAUDE_CODE_USE_BEDROCK === '1') providers.push('AWS Bedrock');
   if (process.env.CLAUDE_CODE_USE_VERTEX === '1') providers.push('Google Vertex');
-  if (process.env.SHANNON_USE_CURSOR === '1') providers.push('Cursor');
+  if (process.env.CURSOR_API_KEY) providers.push('Cursor');
   return providers;
 }
 
@@ -147,14 +145,7 @@ export function validateCredentials(): CredentialValidation {
     }
     return { valid: true, mode: 'vertex' };
   }
-  if (process.env.SHANNON_USE_CURSOR === '1') {
-    if (!process.env.CURSOR_API_KEY) {
-      return {
-        valid: false,
-        mode: 'cursor',
-        error: 'Cursor mode requires CURSOR_API_KEY',
-      };
-    }
+  if (process.env.CURSOR_API_KEY) {
     return { valid: true, mode: 'cursor' };
   }
 

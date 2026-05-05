@@ -140,7 +140,7 @@ Shannon Pro supports a self-hosted runner model (similar to GitHub Actions self-
 - **AI Provider Credentials** (choose one):
   - **Anthropic API key** (recommended) - Get from [Anthropic Console](https://console.anthropic.com)
   - **Claude Code OAuth token**
-  - **Cursor** - Use your existing Cursor subscription (see [Cursor](#cursor))
+  - **Cursor SDK** - Use your existing Cursor subscription (see [Cursor](#cursor))
   - **AWS Bedrock** - Route through Amazon Bedrock with AWS credentials (see [AWS Bedrock](#aws-bedrock))
   - **Google Vertex AI** - Route through Google Cloud Vertex AI (see [Google Vertex AI](#google-vertex-ai))
 
@@ -545,16 +545,23 @@ Set `CLOUD_ML_REGION=global` for global endpoints, or a specific region like `us
 
 ### Cursor
 
-Shannon supports using [Cursor](https://cursor.com) as a provider to access Claude models via the Cursor API. This enables users who already have a Cursor subscription to run Shannon without a separate Anthropic API key.
+Shannon supports running agents through [Cursor](https://cursor.com) via the `@cursor/sdk` TypeScript SDK. This enables users who already have a Cursor subscription to run Shannon without a separate Anthropic API key — Shannon agents execute through Cursor's infrastructure using your existing plan.
+
+#### How to Get Your Cursor API Key
+
+1. Go to **https://cursor.com/dashboard/integrations**
+2. Create a new API key (or use an existing one)
+3. Copy the key (format: `crsr_...`)
+
+For team/CI usage, you can also create a service account key from your team settings.
 
 #### Quick Setup
 
-Run `npx @keygraph/shannon setup` and select **Cursor**. The wizard will prompt for your API key and optionally a custom endpoint.
+Run `npx @keygraph/shannon setup` and select **Cursor SDK**. The wizard will prompt for your API key.
 
-Or export env vars directly:
+Or export the env var directly:
 
 ```bash
-export SHANNON_USE_CURSOR=1
 export CURSOR_API_KEY=your-cursor-api-key
 ```
 
@@ -562,25 +569,19 @@ export CURSOR_API_KEY=your-cursor-api-key
 <summary>Clone and Build: add to .env instead</summary>
 
 ```bash
-SHANNON_USE_CURSOR=1
 CURSOR_API_KEY=your-cursor-api-key
 ```
 
 </details>
 
-You can find your Cursor API key in **Cursor Settings > General > API Keys**.
+That's it. When `CURSOR_API_KEY` is set (and no Anthropic credentials are present), Shannon automatically routes all agent execution through the Cursor SDK. The Cursor agent runs locally against your repository — the same way it works in the Cursor IDE, but automated by Shannon's pentest pipeline.
 
-Optionally override the default endpoint (`https://api.cursor.com/v1`):
-
-```bash
-export CURSOR_BASE_URL=https://custom-cursor-endpoint.example.com/v1
-```
-
-Shannon uses the same three model tiers (small, medium, large) when routing through Cursor. Override with `ANTHROPIC_SMALL_MODEL`, `ANTHROPIC_MEDIUM_MODEL`, and `ANTHROPIC_LARGE_MODEL` if needed.
+> [!NOTE]
+> Cursor SDK usage follows the same pricing and usage pools as the Cursor IDE. Spend appears in your team's [usage dashboard](https://cursor.com/dashboard/usage) under the SDK tag.
 
 #### Cursor IDE Integration
 
-Shannon also ships with first-class Cursor IDE support:
+Shannon also ships with first-class Cursor IDE support for developers working on Shannon itself:
 
 - **`.cursorrules`** — Project context file that gives Cursor's AI assistant full knowledge of Shannon's architecture, coding conventions, and project structure.
 - **`.cursor/rules/`** — Rule files for common workflows (debugging, code review, PR creation) that can be invoked from within Cursor.

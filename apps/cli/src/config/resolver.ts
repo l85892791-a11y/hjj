@@ -47,9 +47,7 @@ const CONFIG_MAP: readonly ConfigMapping[] = [
   { env: 'ANTHROPIC_AUTH_TOKEN', toml: 'custom_base_url.auth_token', type: 'string' },
 
   // Cursor
-  { env: 'SHANNON_USE_CURSOR', toml: 'cursor.use', type: 'boolean' },
   { env: 'CURSOR_API_KEY', toml: 'cursor.api_key', type: 'string' },
-  { env: 'CURSOR_BASE_URL', toml: 'cursor.base_url', type: 'string' },
 
   // Model tiers
   { env: 'ANTHROPIC_SMALL_MODEL', toml: 'models.small', type: 'string' },
@@ -170,14 +168,11 @@ function validateProviderFields(config: TOMLConfig, provider: string, errors: st
       break;
     }
 
-    case 'cursor': {
-      const required = ['use', 'api_key'];
-      const missing = required.filter((k) => !keys.includes(k));
-      if (missing.length > 0) {
-        errors.push(`[cursor] missing required keys: ${missing.join(', ')}`);
+    case 'cursor':
+      if (!keys.includes('api_key')) {
+        errors.push('[cursor] requires api_key');
       }
       break;
-    }
   }
 }
 
