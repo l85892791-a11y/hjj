@@ -1,7 +1,7 @@
 # Security Audit Report — arclabel.cc
 
 **Date:** 2026-05-05  
-**Targets:** https://arclabel.cc, https://lk.arclabel.cc  
+**Targets:** https://arclabel.cc, https://lk.arclabel.cc, https://api.arclabel.cc  
 **Stack:** Next.js (Turbopack) + PHP 8.3.6 / Apache 2.4.58 behind Nginx 1.30.0  
 **DNS:** Cloudflare NS, A-record → 91.122.51.213  
 **Type:** External (black-box) penetration testing  
@@ -13,19 +13,22 @@
 | # | Vulnerability | Severity | Status |
 |---|---|---|---|
 | 1 | `phpinfo.php` publicly accessible on `lk.arclabel.cc` | **CRITICAL** | CONFIRMED |
-| 2 | Login panel: No CSRF protection, no rate limiting | **HIGH** | CONFIRMED |
-| 3 | HTTP → HTTPS redirect missing (both domains) | **HIGH** | CONFIRMED |
-| 4 | Session cookie `Secure` flag missing on HTTP | **HIGH** | CONFIRMED |
-| 5 | Zero security headers (HSTS, CSP, X-Frame-Options, etc.) | **HIGH** | CONFIRMED |
-| 6 | Clickjacking — site embeddable in iframe | **HIGH** | CONFIRMED |
-| 7 | Server fingerprinting (Nginx, Apache, PHP, Next.js versions) | **MEDIUM** | CONFIRMED |
-| 8 | DMARC `p=none` — email spoofing not blocked | **MEDIUM** | CONFIRMED |
-| 9 | `disable_functions` empty, no `open_basedir` (PHP) | **MEDIUM** | CONFIRMED |
-| 10 | Missing `robots.txt`, `sitemap.xml`, `security.txt` | **LOW** | CONFIRMED |
-| 11 | No CAA DNS record | **LOW** | CONFIRMED |
-| 12 | No SRI on external resources | **LOW** | CONFIRMED |
+| 2 | IP ban bypass via `X-Forwarded-For` → unlimited brute force | **CRITICAL** | CONFIRMED |
+| 3 | Login panel: No CSRF protection, no rate limiting | **HIGH** | CONFIRMED |
+| 4 | HTTP → HTTPS redirect missing (both domains) | **HIGH** | CONFIRMED |
+| 5 | Session cookie `Secure` flag missing on HTTP | **HIGH** | CONFIRMED |
+| 6 | Zero security headers (HSTS, CSP, X-Frame-Options, etc.) | **HIGH** | CONFIRMED |
+| 7 | Clickjacking — site embeddable in iframe | **HIGH** | CONFIRMED |
+| 8 | API exposes sensitive debug endpoints (403 not 404) | **MEDIUM** | CONFIRMED |
+| 9 | Server fingerprinting (Nginx, Apache, PHP, Next.js versions) | **MEDIUM** | CONFIRMED |
+| 10 | DMARC `p=none` — email spoofing not blocked | **MEDIUM** | CONFIRMED |
+| 11 | `disable_functions` empty, no `open_basedir` (PHP) | **MEDIUM** | CONFIRMED |
+| 12 | API `/ping/` endpoint public (leaks server time) | **LOW** | CONFIRMED |
+| 13 | Missing `robots.txt`, `sitemap.xml`, `security.txt` | **LOW** | CONFIRMED |
+| 14 | No CAA DNS record | **LOW** | CONFIRMED |
+| 15 | No SRI on external resources | **LOW** | CONFIRMED |
 
-**Critical: 1 | High: 5 | Medium: 3 | Low: 3**
+**Critical: 2 | High: 5 | Medium: 4 | Low: 4**
 
 ---
 
@@ -68,9 +71,59 @@ Delete `/phpinfo.php` immediately. It should never exist in production.
 
 ---
 
+### 2. IP Ban Bypass via X-Forwarded-For — Unlimited Brute Force
+
+**Target:** `https://lk.arclabel.cc/auth/login.php`  
+**Status:** CONFIRMED
+
+The login form implements IP-based banning after multiple failed attempts. However, the ban is trivially bypassed by adding a spoofed `X-Forwarded-For` header.
+
+**Test:**
+```
+# IP is banned after brute-force attempts:
+$ curl -s -X POST https://lk.arclabel.cc/auth/login.php \
+    -d "username=test&password=test" → Location: /auth/?login=banned
+
+# Adding X-Forwarded-For bypasses the ban:
+$ curl -s -X POST https://lk.arclabel.cc/auth/login.php \
+    -d "username=test&password=test" \
+    -H "X-Forwarded-For: 45.67.89.10" → Location: /auth/?login=failed
+
+# Proof: 10 consecutive attempts with random IPs, all accepted:
+Attempt 1 (via 185.224.171.203): Location: /auth/?login=failed
+Attempt 2 (via 1.248.62.210):    Location: /auth/?login=failed
+Attempt 3 (via 238.20.44.108):   Location: /auth/?login=failed
+Attempt 4 (via 63.117.67.158):   Location: /auth/?login=failed
+...all pass with login=failed (not banned)
+```
+
+**Impact:**  
+An attacker can brute-force login credentials indefinitely by rotating the `X-Forwarded-For` header on each request. The IP ban provides zero protection.
+
+**Root Cause:**  
+Nginx is passing the client-supplied `X-Forwarded-For` header to the PHP backend without overwriting it with the real client IP. The PHP application trusts this header for ban enforcement.
+
+**Remediation:**  
+In Nginx config, always overwrite `X-Forwarded-For`:
+```nginx
+proxy_set_header X-Forwarded-For $remote_addr;
+# NOT: proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+Additionally, implement rate limiting at the Nginx level (cannot be bypassed by headers):
+```nginx
+limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+location /auth/login.php {
+    limit_req zone=login burst=3 nodelay;
+    proxy_pass ...;
+}
+```
+
+---
+
 ## HIGH
 
-### 2. Login Panel: No CSRF Protection, No Rate Limiting
+### 3. Login Panel: No CSRF Protection, No Rate Limiting
 
 **Target:** `https://lk.arclabel.cc/auth/login.php`  
 **Status:** CONFIRMED
@@ -106,7 +159,7 @@ All 20 consecutive login attempts with wrong credentials were accepted without a
 
 ---
 
-### 3. No HTTP → HTTPS Redirect (Both Domains)
+### 4. No HTTP → HTTPS Redirect (Both Domains)
 
 **Status:** CONFIRMED on both `arclabel.cc` and `lk.arclabel.cc`
 
@@ -142,7 +195,7 @@ server {
 
 ---
 
-### 4. Session Cookie Missing `Secure` Flag on HTTP
+### 5. Session Cookie Missing `Secure` Flag on HTTP
 
 **Status:** CONFIRMED
 
@@ -161,7 +214,7 @@ Always set `Secure` flag on cookies regardless of protocol. Better yet, redirect
 
 ---
 
-### 5. Missing Security Headers (All Domains)
+### 6. Missing Security Headers (All Domains)
 
 **Status:** CONFIRMED — 7 out of 7 critical headers are ABSENT
 
@@ -195,7 +248,7 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 
 ---
 
-### 6. Clickjacking — Site Embeddable in iframe
+### 7. Clickjacking — Site Embeddable in iframe
 
 **Status:** CONFIRMED
 
@@ -234,7 +287,38 @@ A user clicking the fake button would actually interact with the transparent log
 
 ## MEDIUM
 
-### 7. Server & Technology Fingerprinting
+### 8. API Exposes Sensitive Debug Endpoints
+
+**Target:** `https://api.arclabel.cc`  
+**Status:** CONFIRMED
+
+The API subdomain `api.arclabel.cc` exists and uses Bearer token authentication. It returns differentiated errors that reveal information about the API structure:
+
+**API Structure Discovered:**
+```
+Authentication:  Bearer token via Authorization header
+Token missing:   {"ok":false,"error":{"code":"token_missing","message":"API token is required."}}
+Token invalid:   {"ok":false,"error":{"code":"token_invalid","message":"API token is invalid."}}
+IP banned:       {"ok":false,"error":{"code":"ip_banned","message":"This IP is blocked for the API."}}
+```
+
+**Endpoints returning 403 (Forbidden — exist but restricted):**
+- `/auth/forgot`, `/auth/verify`, `/auth/callback` — auth flow
+- `/auth/google`, `/auth/vk`, `/auth/telegram` — OAuth providers (reveals integrations)
+- `/metrics`, `/debug`, `/debug/vars`, `/pprof` — debug/monitoring endpoints
+- `/env`, `/config` — configuration endpoints
+- `/swagger-ui`, `/redoc`, `/api-docs/swagger.json` — API documentation
+- `/public/artists`, `/webhook`, `/webhooks` — business logic
+
+**Impact:**  
+Returning 403 instead of 404 confirms these paths exist. An attacker now knows the API has Swagger docs, debug endpoints, OAuth integrations (Google, VK, Telegram), metrics, and configuration endpoints. This is valuable reconnaissance for targeted attacks.
+
+**Remediation:**  
+Return 404 (not 403) for all non-public endpoints when the request is unauthenticated. Do not differentiate between "exists but forbidden" and "does not exist."
+
+---
+
+### 9. Server & Technology Fingerprinting
 
 **Status:** CONFIRMED — full server stack exposed across both domains
 
@@ -265,7 +349,7 @@ Apache error pages should be customized to hide version info: `ServerSignature O
 
 ---
 
-### 8. DMARC Policy `p=none` — Email Spoofing Possible
+### 10. DMARC Policy `p=none` — Email Spoofing Possible
 
 **Status:** CONFIRMED
 
@@ -287,7 +371,7 @@ v=DMARC1; p=reject; rua=mailto:webmaster@arclabel.cc; adkim=s; aspf=s
 
 ---
 
-### 9. PHP Misconfiguration — No disable_functions, No open_basedir
+### 11. PHP Misconfiguration — No disable_functions, No open_basedir
 
 **Status:** CONFIRMED (via phpinfo.php)
 
@@ -312,7 +396,26 @@ allow_url_fopen = Off
 
 ## LOW
 
-### 10. Missing robots.txt, sitemap.xml, security.txt
+### 12. API `/ping/` Endpoint Public — Leaks Server Time
+
+**Target:** `https://api.arclabel.cc/ping/`  
+**Status:** CONFIRMED
+
+```
+$ curl -s https://api.arclabel.cc/ping/
+{"ok":true,"data":{"status":"api_reachable","time":"2026-05-05T14:07:34+00:00"}}
+```
+
+This endpoint is accessible without authentication and even when the IP is banned. It reveals:
+- API is reachable (confirms infrastructure is running)
+- Exact server time (useful for timing attacks, token generation prediction)
+
+**Remediation:**  
+Require authentication or remove this endpoint in production.
+
+---
+
+### 13. Missing robots.txt, sitemap.xml, security.txt
 
 **Test:**
 ```
@@ -325,7 +428,7 @@ https://arclabel.cc/.well-known/security.txt  → 404
 
 ---
 
-### 11. No CAA DNS Record
+### 14. No CAA DNS Record
 
 **Test:**
 ```
@@ -342,7 +445,7 @@ arclabel.cc.  IN  CAA  0 issue "letsencrypt.org"
 
 ---
 
-### 12. No SRI on External Resources
+### 15. No SRI on External Resources
 
 **Test:**
 ```
@@ -379,19 +482,26 @@ Resources with integrity attribute: 0
 ## Architecture Discovery
 
 ```
-Internet
+Internet (91.122.51.213)
     │
     ├── arclabel.cc (main site)
-    │       │
     │       └── Nginx 1.30.0 → Next.js (Turbopack, SSR/prerender)
     │
-    └── lk.arclabel.cc (admin panel)
-            │
-            └── Nginx 1.30.0 → Apache 2.4.58 → PHP 8.3.6 + MySQL
-                                  │
-                                  └── Host: mx1.lws.su (also mail server!)
-                                      OS: Ubuntu, Kernel 6.8.0-110
-                                      Document Root: /var/www/fastuser/data/www/lk.arclabel.cc
+    ├── lk.arclabel.cc (admin panel)
+    │       └── Nginx 1.30.0 → Apache 2.4.58 → PHP 8.3.6 + MySQL
+    │
+    └── api.arclabel.cc (REST API)
+            └── Nginx 1.30.0 → Application (Bearer token auth)
+                  │
+                  ├── /ping/ (public, no auth needed)
+                  ├── /auth/* (login, forgot, verify, OAuth: google/vk/telegram)
+                  ├── /me, /users, /profile, /releases, /artists, /tracks
+                  ├── /analytics, /dashboard, /upload, /settings
+                  ├── /metrics, /debug, /pprof, /env, /config (debug!)
+                  └── /swagger-ui, /redoc, /api-docs (API docs)
+
+All services: Host mx1.lws.su, OS Ubuntu (Kernel 6.8.0-110)
+Document Root: /var/www/fastuser/data/www/lk.arclabel.cc
 ```
 
 **Note:** The web server and mail server appear to be the **same machine** (`mx1.lws.su`). Compromising the web application would also compromise the email system.
@@ -403,12 +513,15 @@ Internet
 | Priority | Action | Effort |
 |---|---|---|
 | 1 | **Delete `/phpinfo.php`** on lk.arclabel.cc | 1 command |
-| 2 | **Add HTTP → HTTPS redirect** in Nginx for both domains | Nginx config edit |
-| 3 | **Add rate limiting** to login form | PHP/Nginx change |
-| 4 | **Add CSRF token** to login form | PHP code change |
-| 5 | **Add security headers** (HSTS, CSP, X-Frame-Options, etc.) | Nginx config |
-| 6 | **Configure `disable_functions` and `open_basedir`** in php.ini | PHP config |
-| 7 | **Hide server versions** (`server_tokens off`, remove X-Powered-By) | Nginx config |
-| 8 | **Upgrade DMARC** to `p=reject` | DNS record change |
-| 9 | **Add CAA record** | DNS record change |
-| 10 | **Add robots.txt, sitemap.xml, security.txt** | Static files |
+| 2 | **Fix `X-Forwarded-For` in Nginx** — use `$remote_addr` not client header | Nginx config edit |
+| 3 | **Add Nginx-level rate limiting** on `/auth/login.php` | Nginx config edit |
+| 4 | **Add HTTP → HTTPS redirect** in Nginx for all domains | Nginx config edit |
+| 5 | **Add CSRF token** to login form | PHP code change |
+| 6 | **Add security headers** (HSTS, CSP, X-Frame-Options, etc.) | Nginx config |
+| 7 | **Configure `disable_functions` and `open_basedir`** in php.ini | PHP config |
+| 8 | **Return 404 instead of 403** for unauthenticated API requests | API code change |
+| 9 | **Protect `/ping/` endpoint** or remove server time from response | API code change |
+| 10 | **Hide server versions** (`server_tokens off`, remove X-Powered-By) | Nginx config |
+| 11 | **Upgrade DMARC** to `p=reject` | DNS record change |
+| 12 | **Add CAA record** | DNS record change |
+| 13 | **Add robots.txt, sitemap.xml, security.txt** | Static files |
