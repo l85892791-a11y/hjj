@@ -8,6 +8,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline';
 import { ensureImage, ensureInfra, randomSuffix, spawnWorker } from '../docker.js';
 import { buildEnvFlags, loadEnv, validateCredentials } from '../env.js';
 import { getCredentialsPath, getWorkspacesDir, initHome } from '../home.js';
@@ -31,11 +32,18 @@ export async function start(args: StartArgs): Promise<void> {
   initHome();
   loadEnv();
 
-  // 2. Validate credentials
-  const creds = validateCredentials();
+  // 2. Validate credentials — prompt for Cursor API key if nothing is configured
+  let creds = validateCredentials();
   if (!creds.valid) {
-    console.error(`ERROR: ${creds.error}`);
-    process.exit(1);
+    const cursorKey = await promptCursorApiKey();
+    if (cursorKey) {
+      process.env.CURSOR_API_KEY = cursorKey;
+      creds = validateCredentials();
+    }
+    if (!creds.valid) {
+      console.error(`ERROR: ${creds.error}`);
+      process.exit(1);
+    }
   }
 
   // 3. Resolve paths
@@ -213,6 +221,32 @@ function printDebugHint(containerName: string): void {
   console.log(`    Inspect logs: docker logs ${containerName}`);
   console.log(`    Remove:       docker rm ${containerName}`);
   console.log('');
+}
+
+/**
+ * Interactively prompt for a Cursor API key when no provider is configured.
+ * Returns the key string, or null if the user skips.
+ */
+async function promptCursorApiKey(): Promise<string | null> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  console.log('');
+  console.log('  No AI provider credentials found.');
+  console.log('  You can enter a Cursor API key to run Shannon through your Cursor subscription.');
+  console.log('  Get your key at: https://cursor.com/dashboard/integrations');
+  console.log('');
+
+  return new Promise((resolve) => {
+    rl.question('  Cursor API Key (or press Enter to skip): ', (answer) => {
+      rl.close();
+      const trimmed = answer.trim();
+      if (!trimmed) {
+        resolve(null);
+        return;
+      }
+      resolve(trimmed);
+    });
+  });
 }
 
 function printInfo(
