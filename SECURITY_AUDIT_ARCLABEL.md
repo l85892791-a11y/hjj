@@ -508,20 +508,157 @@ Document Root: /var/www/fastuser/data/www/lk.arclabel.cc
 
 ---
 
+---
+
+## Phase 2: Deep Penetration Testing Results
+
+### Infrastructure Discovery
+
+**Port Scan Results (91.122.51.213) — ALL ports reported open:**
+
+| Port | Service | Finding |
+|---|---|---|
+| 21 | FTP | ProFTPD Server (Debian), banner: `[::ffff:192.168.0.250]` — reveals internal IP |
+| 22 | SSH | OpenSSH 9.6p1 Ubuntu-3ubuntu13.16 — exact version exposed |
+| 25 | SMTP | Mail server (expected, `mx1.lws.su`) |
+| 80 | HTTP | Nginx, serves arclabel.cc without HTTPS redirect |
+| 443 | HTTPS | Nginx → Next.js / Apache+PHP |
+| 445 | SMB | Open (should not be public!) |
+| 993 | IMAPS | Mail |
+| 995 | POP3S | Mail |
+| 3000 | HTTP | **Another website!** "Вершина Ландшафта" — shared hosting confirmed |
+| 3306 | MySQL | Listening but drops connections (likely firewall rules) |
+| 3389 | RDP | Open (should not be public!) |
+| 5432 | PostgreSQL | Drops connections |
+| 5900 | VNC | Open (should not be public!) |
+| 6379 | Redis | Connection reset (protected) |
+| 8000 | HTTP | No response |
+| 8080 | HTTP | Active service |
+| 8443 | HTTPS | Active |
+| 8888 | HTTPS | **FASTPANEL Hosting Control Panel** |
+| 9000 | — | Open |
+| 9090 | — | Open |
+| 9200 | Elasticsearch | Listening |
+| 9300 | Elasticsearch | Transport |
+| 10000 | — | Open |
+| 27017 | MongoDB | Listening |
+
+**Critical:** Ports 445 (SMB), 3389 (RDP), 5900 (VNC), 8888 (FastPanel) should NEVER be exposed to the internet.
+
+---
+
+### FASTPANEL Hosting Control Panel (port 8888)
+
+**URL:** `https://91.122.51.213:8888/`  
+**Status:** Publicly accessible, login page works
+
+```
+POST /login → {"code":401,"message":"Incorrect Username / Password"}
+```
+
+**Discovered API endpoints (from JS analysis):**
+- `/api/me`, `/api/settings`, `/api/loads/full`, `/api/queue`
+- `/api/sites/list`, `/api/sites/simple`, `/api/users`, `/api/users/simple`
+- `/api/profile`, `/api/ips`
+- Backup management: `/backups/accounts.json`, `/backups/plans.json`
+- Cron: `/cron/schedule.json`
+
+All return `403 — You don't have permission` without auth. FastPanel has brute-force protection (180s ban after failures).
+
+**Impact:** If an attacker gains access to FastPanel, they have **full server control** — file management, database access, SSH keys, email, DNS, backups — everything.
+
+---
+
+### Exposed Configuration Files
+
+| File | HTTP Status | Content |
+|---|---|---|
+| `/.user.ini` | **200 OK** | PHP config: `upload_max_filesize=5G`, `memory_limit=512M`, `max_file_uploads=100`, `max_execution_time=600` |
+| `/.htpasswd` | 403 | Exists but protected |
+| `/.htaccess` | 403 | Exists but protected |
+| `/includes/config.php` | 200 (0 bytes) | PHP executes, no output (defines variables) |
+| `/includes/db.php` | 200 (0 bytes) | PHP executes, no output (DB connection) |
+| `/includes/config.phps` | 403 | **Source view file exists!** |
+| `/includes/db.phps` | 403 | **Source view file exists!** |
+| `/auth/login.phps` | 403 | **Source view file exists!** |
+
+**`.user.ini` exposes:**
+- 5GB upload limit (allows massive file upload attacks)
+- 100 simultaneous file uploads
+- 10-minute execution time (allows slow attacks)
+- 512MB memory (allows memory-exhaustion attacks)
+
+**`.phps` files exist (403 instead of 404)**, which confirms PHP source highlighting is configured but protected by Apache. A misconfiguration could expose source code.
+
+---
+
+### Confirmed Existing Directories
+
+| Path | HTTP Status | Notes |
+|---|---|---|
+| `/uploads/` | 403 | File uploads directory exists |
+| `/includes/` | 403 | PHP includes directory |
+| `/releases/` | 403 | Business logic |
+| `/profile/` | 403 | User profiles |
+| `/assets/js/` | 403 | Panel JavaScript |
+| `/auth/logout.php` | 302 | Logout endpoint exists |
+
+---
+
+### FTP & SSH Banners — Information Disclosure
+
+```
+FTP: 220 ProFTPD Server (Debian) [::ffff:192.168.0.250]
+     → Reveals internal IP address 192.168.0.250 (NAT/Docker network)
+
+SSH: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.16
+     → Exact SSH version and OS patch level
+```
+
+---
+
+### Shared Hosting Confirmed
+
+Port 3000 serves a completely different website ("Вершина Ландшафта" — landscaping company). This confirms the server hosts multiple clients on shared infrastructure. A vulnerability in one site could compromise all others.
+
+---
+
+### Attacks Attempted But Failed
+
+| Attack Vector | Result |
+|---|---|
+| **Brute-force login** (742 combinations, email + username formats) | All `login=failed` — passwords are not trivial |
+| **SQL Injection** (classic, time-based blind) | Not vulnerable — parameterized queries |
+| **Path Traversal / LFI** (12 payloads × 10 params) | Not vulnerable |
+| **PHP Session Upload Progress RCE** | `upload_progress.cleanup=On` prevents exploitation |
+| **PHP type juggling** (boolean, null, array, object) | JSON body not parsed by `$_POST`; form array params → banned |
+| **Cookie manipulation / session fixation** | Server properly validates session tokens |
+| **FTP anonymous login** | Access denied |
+| **Redis direct access** | Connection reset (firewall) |
+| **MySQL direct access** | Connection dropped (firewall) |
+| **FastPanel brute-force** | 180s ban after ~5 attempts (proper rate limiting) |
+| **API token bypass** (JWT none, UUID, hex) | All return `token_invalid` |
+| **Source code leak** (.bak, .old, .swp, ~) | No backup files found |
+
+---
+
 ## Priority Remediation Order
 
 | Priority | Action | Effort |
 |---|---|---|
-| 1 | **Delete `/phpinfo.php`** on lk.arclabel.cc | 1 command |
-| 2 | **Fix `X-Forwarded-For` in Nginx** — use `$remote_addr` not client header | Nginx config edit |
-| 3 | **Add Nginx-level rate limiting** on `/auth/login.php` | Nginx config edit |
-| 4 | **Add HTTP → HTTPS redirect** in Nginx for all domains | Nginx config edit |
-| 5 | **Add CSRF token** to login form | PHP code change |
-| 6 | **Add security headers** (HSTS, CSP, X-Frame-Options, etc.) | Nginx config |
-| 7 | **Configure `disable_functions` and `open_basedir`** in php.ini | PHP config |
-| 8 | **Return 404 instead of 403** for unauthenticated API requests | API code change |
-| 9 | **Protect `/ping/` endpoint** or remove server time from response | API code change |
-| 10 | **Hide server versions** (`server_tokens off`, remove X-Powered-By) | Nginx config |
-| 11 | **Upgrade DMARC** to `p=reject` | DNS record change |
-| 12 | **Add CAA record** | DNS record change |
-| 13 | **Add robots.txt, sitemap.xml, security.txt** | Static files |
+| 1 | **CLOSE ports 445, 3389, 5900, 8888** to public internet (firewall) | Firewall rules |
+| 2 | **Delete `/phpinfo.php`** and `/.user.ini` from web root | 2 commands |
+| 3 | **Delete `.phps` files** or disable PHP source highlighting | Apache config |
+| 4 | **Restrict FastPanel** to VPN/whitelist IPs only | Firewall rules |
+| 5 | **Fix `X-Forwarded-For` in Nginx** — use `$remote_addr` not client header | Nginx config edit |
+| 6 | **Add Nginx-level rate limiting** on `/auth/login.php` | Nginx config edit |
+| 7 | **Add HTTP → HTTPS redirect** in Nginx for all domains | Nginx config edit |
+| 8 | **Add CSRF token** to login form | PHP code change |
+| 9 | **Add security headers** (HSTS, CSP, X-Frame-Options, etc.) | Nginx config |
+| 10 | **Configure `disable_functions` and `open_basedir`** in php.ini | PHP config |
+| 11 | **Return 404 instead of 403** for unauthenticated API requests | API code change |
+| 12 | **Hide server versions** everywhere (Nginx, Apache, SSH, FTP, PHP) | Multi-config |
+| 13 | **Close FTP banner** — reveals internal IP (192.168.0.250) | ProFTPD config |
+| 14 | **Reduce `.user.ini` limits** (5GB upload, 100 files, 600s timeout is excessive) | PHP config |
+| 15 | **Upgrade DMARC** to `p=reject` | DNS record change |
+| 16 | **Add CAA record, robots.txt, sitemap.xml, security.txt** | DNS + files |
