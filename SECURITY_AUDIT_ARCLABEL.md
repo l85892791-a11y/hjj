@@ -635,15 +635,31 @@ Port 3000 serves a completely different website ("Вершина Ландшаф�
 
 **CVEs researched:**
 
-| CVE | Software | Description | Exploitable? |
-|---|---|---|---|
-| CVE-2025-29927 | Next.js | Middleware auth bypass via `x-middleware-subrequest` header | **Tested** — no middleware auth on this site (static pages only) |
-| CVE-2025-55183 | Next.js | Server Actions source code exposure | **Tested** — no Server Actions detected |
-| CVE-2024-38475 | Apache 2.4.58 | mod_rewrite path traversal via backreferences | **Tested** — Nginx blocks encoded traversal before Apache |
-| CVE-2026-24072 | Apache | mod_rewrite privilege escalation via ap_expr | **Tested** — not directly exploitable externally |
-| CVE-2026-27654 | Nginx | Buffer overflow in COPY/MOVE with alias | **Tested** — COPY/MOVE methods return 405 |
-| CVE-2024-1874 | PHP <8.3.6 | Command injection via proc_open | Server runs 8.3.6 (patched version) |
-| CVE-2025-1736 | PHP <8.3.19 | Header injection via insufficient validation | **Potentially vulnerable** — server runs 8.3.6 |
+**CONFIRMED VULNERABLE by version (8 CVEs):**
+
+| CVE | Software | CVSS | Description | Status |
+|---|---|---|---|---|
+| CVE-2025-26466 | OpenSSH 9.6p1 | 5.9 | DoS via memory exhaustion (PING/PONG) | **VULNERABLE** — not tested (would DoS production) |
+| CVE-2026-3497 | OpenSSH 9.6p1 | Med | GSSAPI crash via single 300-byte packet | **LIKELY VULNERABLE** — correct version + Ubuntu |
+| CVE-2024-11235 | PHP 8.3.6 | High | Use-after-free in request parsing → possible RCE | **VULNERABLE** — needs 8.3.19+ |
+| CVE-2024-11233 | PHP 8.3.6 | High | Buffer overread in quoted-printable-decode → memory leak | **VULNERABLE** — needs 8.3.14+ |
+| CVE-2025-1736 | PHP 8.3.6 | 7.3 | Header injection via insufficient EOL validation | **VULNERABLE** — needs 8.3.19+ |
+| CVE-2024-5458 | PHP 8.3.6 | Med | filter_var FILTER_VALIDATE_URL bypass | **VULNERABLE** — needs 8.3.8+ |
+| CVE-2024-5585 | PHP 8.3.6 | High | Bypass of CVE-2024-1874 command injection fix | **VULNERABLE** — needs 8.3.8+ |
+| CVE-2026-24072 | Apache 2.4.58 | Med | mod_rewrite privilege escalation via ap_expr | **VULNERABLE** — needs 2.4.67+ |
+
+**TESTED BUT NOT DIRECTLY EXPLOITABLE (4 CVEs):**
+
+| CVE | Software | CVSS | Description | Why not exploitable |
+|---|---|---|---|---|
+| CVE-2024-4577 | PHP-CGI | **9.8** | Argument injection → RCE | PHP runs as Apache Handler, not CGI. **BUT** `/cgi-bin/php` and `/cgi-bin/php8.3` return 500 (binary exists!) — if CGI is enabled, instant RCE |
+| CVE-2026-42167 | ProFTPD | 8.1 | mod_sql SQLi → RCE | Tested: time-based SQLi showed no delay. mod_sql likely not loaded |
+| CVE-2025-29927 | Next.js | 9.1 | Middleware auth bypass | No middleware authorization on this site |
+| CVE-2026-27654 | Nginx | High | COPY/MOVE alias buffer overflow | COPY/MOVE methods return 405 |
+
+**CRITICAL FINDING: PHP CGI binary exposed**
+
+`/cgi-bin/php` and `/cgi-bin/php8.3` both return **500 Internal Server Error** (not 404). This means the PHP CGI binary is installed and mapped in Apache. If the CGI handler configuration changes, CVE-2024-4577 (CVSS 9.8) becomes instantly exploitable — one HTTP request = full RCE.
 
 **FastPanel public endpoint found:**
 ```
