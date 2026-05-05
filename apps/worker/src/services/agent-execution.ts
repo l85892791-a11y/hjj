@@ -23,6 +23,7 @@
 
 import { fs, path } from 'zx';
 import { type ClaudePromptResult, runClaudePrompt, validateAgentOutput } from '../ai/claude-executor.js';
+import { isCursorMode, runCursorPrompt } from '../ai/cursor-executor.js';
 import { getOutputFormat, getQueueFilename } from '../ai/queue-schemas.js';
 import type { AuditSession } from '../audit/index.js';
 import { AGENTS } from '../session-manager.js';
@@ -141,22 +142,36 @@ export class AgentExecutionService {
     // 4. Start audit logging
     await auditSession.startAgent(agentName, prompt, attemptNumber);
 
-    // 5. Execute agent
+    // 5. Execute agent — route to Cursor SDK when CURSOR_API_KEY is configured
     const outputFormat = getOutputFormat(agentName);
-    const result: ClaudePromptResult = await runClaudePrompt(
-      prompt,
-      repoPath,
-      '', // context
-      agentName, // description
-      agentName,
-      auditSession,
-      logger,
-      AGENTS[agentName].modelTier,
-      outputFormat,
-      apiKey,
-      path.relative(repoPath, deliverablesPath),
-      providerConfig,
-    );
+    let result: ClaudePromptResult;
+    if (isCursorMode() && !providerConfig) {
+      result = await runCursorPrompt(
+        prompt,
+        repoPath,
+        '', // context
+        agentName, // description
+        agentName,
+        auditSession,
+        logger,
+        AGENTS[agentName].modelTier,
+      );
+    } else {
+      result = await runClaudePrompt(
+        prompt,
+        repoPath,
+        '', // context
+        agentName, // description
+        agentName,
+        auditSession,
+        logger,
+        AGENTS[agentName].modelTier,
+        outputFormat,
+        apiKey,
+        path.relative(repoPath, deliverablesPath),
+        providerConfig,
+      );
+    }
 
     // 6. Spending cap check - defense-in-depth
     if (result.success && (result.turns ?? 0) <= 2 && (result.cost || 0) === 0) {
