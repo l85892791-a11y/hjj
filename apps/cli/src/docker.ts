@@ -18,8 +18,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NPX_IMAGE_REPO = 'keygraph/shannon';
 const DEV_IMAGE = 'shannon-worker';
 
-export function getWorkerImage(version: string): string {
-  return getMode() === 'local' ? DEV_IMAGE : `${NPX_IMAGE_REPO}:${version}`;
+export function getWorkerImage(_version: string): string {
+  return getMode() === 'local' ? DEV_IMAGE : `${NPX_IMAGE_REPO}:latest`;
 }
 
 function getComposeFile(): string {
